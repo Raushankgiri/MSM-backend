@@ -511,6 +511,32 @@ const globalSearchConnections = async (req, res) => {
   }
 };
 
+const deleteconnectionrequest =async (req, res) => {
+  try {
+      const { id } = req.body;
+
+      if (!id) {
+          return res.status(400).json({ message: "ID is required" });
+      }
+
+      // Validate ObjectId
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+          return res.status(400).json({ message: "Invalid ID format" });
+      }
+
+      const deletedConnection = await connection.findByIdAndDelete({_id:id});
+
+      if (!deletedConnection) {
+          return res.status(404).json({ message: "Connection not found" });
+      }
+
+      res.status(200).json({ message: "Connection deleted successfully", data: deletedConnection });
+  } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
 module.exports = {
   createuser1,
   login,
@@ -522,4 +548,6 @@ module.exports = {
   updateconnectionstuats,
   getConnectionDetails,
   globalSearchConnections,
+  getUserConnections,
+  deleteconnectionrequest
 };
