@@ -9,7 +9,7 @@ const cluster = require("cluster");
 const os = require("os");
 const numCPUs = require("node:os").availableParallelism();
 const process = require("node:process");
-const router = require("../src/api/route/routes");
+const router = require("./src/api/route/routes");
 require("dotenv").config();
 const mongoose = require('mongoose');
 const fs = require('fs');
@@ -27,7 +27,7 @@ const port = process.env.port;
 
 let cpuCount = os.cpus().length;
 const email_link = process.env.verified_uri;
-const { connectDB, disconnectDB } = require("../src/db/connection");
+const { connectDB, disconnectDB } = require("./src/db/connection");
 connectDB(function (err, db) {
   if (err) {
    
