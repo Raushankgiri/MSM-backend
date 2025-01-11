@@ -469,20 +469,30 @@ const globalSearchConnections = async (req, res) => {
   }
 
   try {
-    // 1. Find connections where `firstname` or `lastname` matches the query
-    const regex = new RegExp(query, "i"); // Case-insensitive partial match
+    // Split the query into individual words and create regex patterns
+    const terms = query.trim().split(/\s+/); // Split by spaces
+    const regexArray = terms.map((term) => new RegExp(term, "i")); // Case-insensitive regex for each term
+
+    // Search for matches in `firstname` or `lastname`
     const users = await user
       .find({
-        $or: [{ firstname: regex }, { lastname: regex }],
+        $or: [
+          { firstname: { $in: regexArray } }, // Match any term in firstname
+          { lastname: { $in: regexArray } }, // Match any term in lastname
+        ],
       })
       .select("firstname lastname designation profileImage");
 
-    // 2. Format response with name, designation, and profile image
+    // Format response
     const response = users.map((user) => ({
       name: `${user.firstname} ${user.lastname}`,
       designation: user.designation,
       profileImage: user.profileImage,
     }));
+
+    if (response.length === 0) {
+      return res.status(404).json({ message: "No results found." });
+    }
 
     return res.status(200).json({
       message: "Search results fetched successfully.",
