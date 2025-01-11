@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 
 const userschema = new mongoose.Schema(
   {
-  
     firstname: {
       type: String,
       required: true,
@@ -23,11 +22,11 @@ const userschema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    referredby:{
+    referredby: {
       type: String,
       required: true,
     },
-    referrelid:{
+    referrelid: {
       type: String,
       required: true,
     },
@@ -36,7 +35,7 @@ const userschema = new mongoose.Schema(
       required: true,
     },
     countrycode: {
-      type: String, // Store department as an array of strings to handle multiple departments
+      type: String,
       required: true,
     },
     phonenumber: {
@@ -46,7 +45,31 @@ const userschema = new mongoose.Schema(
     password: {
       type: String,
       required: true,
-    }
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    designation: {
+      type: String,
+      required: true,
+    },
+    profileImage: {
+      type: String,
+      required: true,
+    },
+    university: {
+      type: String,
+      required: true,
+    },
+    course: {
+      type: String,
+      required: true,
+    },
+    subjects: {
+      type: String,
+      required: true,
+    },
   },
   {
     timestamps: {
@@ -55,6 +78,18 @@ const userschema = new mongoose.Schema(
     },
   }
 );
+
+// Create a text index on the fields you want to search
+userschema.index({
+  firstname: "text",
+  lastname: "text",
+  email: "text",
+  country: "text",
+  university: "text",
+  course: "text",
+  designation: "text",
+  subjects: "text",
+});
 
 const user = mongoose.model("user", userschema);
 module.exports = user;

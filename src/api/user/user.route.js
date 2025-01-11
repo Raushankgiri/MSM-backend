@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
 const {
-
   createuser1,
   login,
   getsuggestion,
@@ -13,7 +12,7 @@ const {
   getConnectionDetails,
   globalSearchConnections,
   deleteconnectionrequest,
-  getUserConnections
+  getUserConnections,
 } = require("../user/user.controller");
 const auth = require("../../middlewares/auth");
 
@@ -28,22 +27,8 @@ router.post("/getConnectionListByReceiver", getConnectionListByReceiver);
 router.post("/getConnectionListBysender", getConnectionListBysender);
 router.put("/updateconnectionstuats", updateconnectionstuats);
 
-router.post("/globalSearchConnections", globalSearchConnections);
+router.get("/globalSearchConnections", globalSearchConnections);
 router.post("/deleteconnectionrequest", deleteconnectionrequest);
 router.post("/getUserConnections", getUserConnections);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 module.exports = router;

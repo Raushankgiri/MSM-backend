@@ -29,7 +29,6 @@ const createuser1 = async (req, res) => {
       return res.status(400).json({ message: "All fields are required." });
     }
 
-   
     const existingUser = await user.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "Email already exists." });
@@ -87,11 +86,7 @@ const login = async (req, res) => {
     if (!isMatch) {
       return res.status(400).send({ message: "Invalid email ID or password" });
     }
-    const token = jwt.sign(
-      { email: userdata.email }, 
-      "yourSecretKey",
-      { expiresIn: "1h" }
-    );
+    const token = jwt.sign({ email: userdata.email }, "yourSecretKey", { expiresIn: "1h" });
     return res.status(200).send({
       message: "Login successful",
       token,
@@ -189,7 +184,6 @@ const getsuggestion = async (req, res) => {
   }
 };
 
-
 const getUserConnections = async (req, res) => {
   try {
     const { id } = req.body;
@@ -198,22 +192,19 @@ const getUserConnections = async (req, res) => {
     }
     const connections = await connection.find(
       {
-        $or: [
-          { sender: new mongoose.Types.ObjectId(id) },
-          { receiver: new mongoose.Types.ObjectId(id) }
-        ],
-        status: 'Accepted' 
+        $or: [{ sender: new mongoose.Types.ObjectId(id) }, { receiver: new mongoose.Types.ObjectId(id) }],
+        status: "Accepted",
       },
-      '_id sender receiver' 
+      "_id sender receiver"
     );
-    const connectionIds = connections.map(conn => [conn.sender, conn.receiver]).flat();
-    const uniqueIds = [...new Set(connectionIds.map(id => id.toString()))];
-    const filteredIds = uniqueIds.filter(userId => userId !== id);
+    const connectionIds = connections.map((conn) => [conn.sender, conn.receiver]).flat();
+    const uniqueIds = [...new Set(connectionIds.map((id) => id.toString()))];
+    const filteredIds = uniqueIds.filter((userId) => userId !== id);
     if (filteredIds.length === 0) {
       return res.status(200).json({ users: [] });
     }
-    const users = await user.find({ 
-      _id: { $in: filteredIds.map(id => new mongoose.Types.ObjectId(id)) }
+    const users = await user.find({
+      _id: { $in: filteredIds.map((id) => new mongoose.Types.ObjectId(id)) },
     });
     return res.status(200).json({ users });
   } catch (error) {
@@ -222,9 +213,8 @@ const getUserConnections = async (req, res) => {
   }
 };
 
-
 const getConnectionDetails = async (req, res) => {
-  const { senderId } = req.body; 
+  const { senderId } = req.body;
 
   try {
     const Connectionslist = await connection.find({ sender: senderId });
@@ -329,7 +319,7 @@ const getConnectionListByReceiver = async (req, res) => {
         },
       },
       {
-        $unwind: "$senderDetails", 
+        $unwind: "$senderDetails",
       },
       {
         $project: {
@@ -389,7 +379,7 @@ const getConnectionListBysender = async (req, res) => {
         },
       },
       {
-        $unwind: "$receiverDetails", 
+        $unwind: "$receiverDetails",
       },
       {
         $project: {
@@ -455,11 +445,7 @@ const updateconnectionstuats = async (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status value." });
     }
-    const connections = await connection.findOneAndUpdate(
-      { receiver: receiverId, sender: senderId },
-      { status },
-      { new: true } 
-    );
+    const connections = await connection.findOneAndUpdate({ receiver: receiverId, sender: senderId }, { status }, { new: true });
 
     if (!connections) {
       return res.status(404).json({ message: "Connection not found." });
@@ -476,31 +462,81 @@ const updateconnectionstuats = async (req, res) => {
 };
 
 const globalSearchConnections = async (req, res) => {
-  const { query } = req.body;
+  const query = req.query.q; // Get the search query from the URL
+  let page = parseInt(req.query.page) || 1; // Default to page 1 if not provided
+  let limit = parseInt(req.query.limit) || 10;
+  const _id = req.query._id; // Current user ID
+
+  if (!mongoose.Types.ObjectId.isValid(_id)) {
+    return res.status(400).json({ message: "Invalid UserId (_id) provided." });
+  }
+
+  const userExists = await user.findById(_id); // Fetch the user by their unique ID
+  if (!userExists) {
+    return res.status(404).json({ message: "User not found." }); // Return a 404 error if the user does not exist
+  }
+
+  // Ensure valid pagination parameters
+  page = page < 1 ? 1 : page;
+  limit = limit < 1 ? 10 : limit;
 
   if (!query) {
     return res.status(400).json({ message: "Search query is required." });
   }
 
-  try {
-    // 1. Find connections where `firstname` or `lastname` matches the query
-    const regex = new RegExp(query, "i"); // Case-insensitive partial match
-    const users = await user
-      .find({
-        $or: [{ firstname: regex }, { lastname: regex }],
-      })
-      .select("firstname lastname designation profileImage");
+  const skip = (page - 1) * limit;
 
-    // 2. Format response with name, designation, and profile image
-    const response = users.map((user) => ({
-      name: `${user.firstname} ${user.lastname}`,
-      designation: user.designation,
-      profileImage: user.profileImage,
-    }));
+  try {
+    // Create a case-insensitive regex for partial matches
+    const regex = new RegExp(query, "i");
+
+    const searchQuery = {
+      $or: [
+        { firstname: regex },
+        { lastname: regex },
+        { email: regex },
+        { designation: regex },
+        { country: regex },
+        { countrycode: regex },
+        { phonenumber: regex },
+        { typeofstudent: regex },
+        { university: regex },
+        { course: regex },
+        { subjects: regex },
+      ],
+      _id: { $ne: _id }, // Exclude the logged-in user's data
+    };
+
+    // Fields to exclude in response
+    const projection = {
+      password: 0, // Exclude sensitive fields
+      referredfrom: 0,
+      referredby: 0,
+      referrelid: 0,
+      createdAt: 0,
+      updatedAt: 0,
+      __v: 0,
+    };
+
+    // Perform the search query with pagination
+    const results = await user.find(searchQuery, projection).skip(skip).limit(limit);
+
+    // Total number of matching documents for pagination
+    const totalCount = await user.countDocuments(searchQuery);
+    const totalPages = Math.ceil(totalCount / limit);
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: "No results found." });
+    }
 
     return res.status(200).json({
       message: "Search results fetched successfully.",
-      data: response,
+      pagination: {
+        totalCount,
+        totalPages,
+        currentPage: page,
+      },
+      data: results,
     });
   } catch (error) {
     console.error("Error fetching search results:", error);
@@ -511,29 +547,29 @@ const globalSearchConnections = async (req, res) => {
   }
 };
 
-const deleteconnectionrequest =async (req, res) => {
+const deleteconnectionrequest = async (req, res) => {
   try {
-      const { id } = req.body;
+    const { id } = req.body;
 
-      if (!id) {
-          return res.status(400).json({ message: "ID is required" });
-      }
+    if (!id) {
+      return res.status(400).json({ message: "ID is required" });
+    }
 
-      // Validate ObjectId
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-          return res.status(400).json({ message: "Invalid ID format" });
-      }
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid ID format" });
+    }
 
-      const deletedConnection = await connection.findByIdAndDelete({_id:id});
+    const deletedConnection = await connection.findByIdAndDelete({ _id: id });
 
-      if (!deletedConnection) {
-          return res.status(404).json({ message: "Connection not found" });
-      }
+    if (!deletedConnection) {
+      return res.status(404).json({ message: "Connection not found" });
+    }
 
-      res.status(200).json({ message: "Connection deleted successfully", data: deletedConnection });
+    res.status(200).json({ message: "Connection deleted successfully", data: deletedConnection });
   } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal Server Error" });
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
@@ -549,5 +585,5 @@ module.exports = {
   getConnectionDetails,
   globalSearchConnections,
   getUserConnections,
-  deleteconnectionrequest
+  deleteconnectionrequest,
 };
