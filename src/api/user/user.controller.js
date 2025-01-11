@@ -462,6 +462,42 @@ const updateconnectionstuats = async (req, res) => {
 };
 
 const globalSearchConnections = async (req, res) => {
+  const { query } = req.body;
+
+  if (!query) {
+    return res.status(400).json({ message: "Search query is required." });
+  }
+
+  try {
+    // 1. Find connections where `firstname` or `lastname` matches the query
+    const regex = new RegExp(query, "i"); // Case-insensitive partial match
+    const users = await user
+      .find({
+        $or: [{ firstname: regex }, { lastname: regex }],
+      })
+      .select("firstname lastname designation profileImage");
+
+    // 2. Format response with name, designation, and profile image
+    const response = users.map((user) => ({
+      name: `${user.firstname} ${user.lastname}`,
+      designation: user.designation,
+      profileImage: user.profileImage,
+    }));
+
+    return res.status(200).json({
+      message: "Search results fetched successfully.",
+      data: response,
+    });
+  } catch (error) {
+    console.error("Error fetching search results:", error);
+    return res.status(500).json({
+      message: "Error fetching search results.",
+      error: error.message,
+    });
+  }
+};
+
+const globalSearch = async (req, res) => {
   const query = req.query.q; // Get the search query from the URL
   let page = parseInt(req.query.page) || 1; // Default to page 1 if not provided
   let limit = parseInt(req.query.limit) || 10;
@@ -586,4 +622,5 @@ module.exports = {
   globalSearchConnections,
   getUserConnections,
   deleteconnectionrequest,
+  globalSearch,
 };

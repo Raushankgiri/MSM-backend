@@ -13,6 +13,7 @@ const {
   globalSearchConnections,
   deleteconnectionrequest,
   getUserConnections,
+  globalSearch,
 } = require("../user/user.controller");
 const auth = require("../../middlewares/auth");
 
@@ -27,7 +28,9 @@ router.post("/getConnectionListByReceiver", getConnectionListByReceiver);
 router.post("/getConnectionListBysender", getConnectionListBysender);
 router.put("/updateconnectionstuats", updateconnectionstuats);
 
-router.get("/globalSearchConnections", globalSearchConnections);
+router.post("/globalSearchConnections", globalSearchConnections);
+router.get("/globalSearch", globalSearch);
+
 router.post("/deleteconnectionrequest", deleteconnectionrequest);
 router.post("/getUserConnections", getUserConnections);
 
