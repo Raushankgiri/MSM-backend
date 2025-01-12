@@ -571,7 +571,7 @@ const globalSearch = async (req, res) => {
   const query = req.query.q; // Get the search query from the URL
   let page = parseInt(req.query.page) || 1; // Default to page 1 if not provided
   let limit = parseInt(req.query.limit) || 10;
-  const { _id } = req.query._id; // Current user ID
+  const { _id } = req.query; // Current user ID
 
   if (!mongoose.Types.ObjectId.isValid(_id)) {
     return res.status(400).json({ message: "Invalid UserId (_id) provided." });
