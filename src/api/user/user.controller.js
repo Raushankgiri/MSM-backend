@@ -6,6 +6,9 @@ const { ObjectId } = require("mongodb");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const ConversationModel = require("../../model/conversation.model");
+const UserReportModel = require("../../model/user-report.model");
+const connectionStatusModel = require("../../model/user-conn-status.model");
+const userSuggestionModel = require("../../model/user-suggestion.model");
 
 require("dotenv").config();
 
@@ -123,41 +126,29 @@ const getsuggestion = async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    //   const userCountry = User.country;
+    const connections = await fetchUserConnections(_id, (data = null));
 
-    //   // Fetch all records with the same country, excluding the user's own data and the password field
-    //   const records = await user.find(
-    //     { country: userCountry, _id: { $ne: _id } }, // Exclude user's own data
-    //     '-password' // Exclude the password field
-    //   );
-    //  // Count the number of records fetched
-    //  const recordsCount = records.length;
-
-    //  // Count the total number of users in the same country (including the current user)
-    //  const connectionCount = await user.countDocuments({ country: userCountry });
-    // Fetch connections
-    const connectionQuery = {
-      $or: [{ sender: new mongoose.Types.ObjectId(_id) }, { receiver: new mongoose.Types.ObjectId(_id) }],
-    };
-    const connections = await connection.find(connectionQuery, "sender receiver");
-    const mergedConnections = connections.flatMap((conn) => [conn.sender, conn.receiver]);
-    const uniqueConnections = [...new Set(mergedConnections)].map((id) => id.toString());
-
-    console.log("--->>", uniqueConnections);
+    console.log("--->>User connections", connections);
     const recommendedUsers = (await fetchRecommendUsers(_id))?.data;
-
+    console.log("recommendedUsers::--->>", recommendedUsers);
     if (!recommendedUsers || recommendedUsers.length === 0) {
       return res.status(404).json({ message: "No recommendations found.", code: 404 });
     }
 
-    console.log(recommendedUsers.data);
     console.log("\n\n:::connections::", connections);
-    // 677ff445ec0252648169ed3b
-    // Define the aggregation pipeline
-    const newRecommendedUsers = recommendedUsers.filter((user) => !uniqueConnections.includes(user));
 
-    const objectIds = newRecommendedUsers.map((id) => new ObjectId(id));
+    const newRecommendedUsers = recommendedUsers.filter((user) => !connections.includes(user) && user !== _id);
 
+    // Fetch dismissed users
+    const dismissedResult = await userSuggestionModel.find({ user: _id }).select("suggested_user_id");
+    const dismissedUsers = dismissedResult.map((item) => item.suggested_user_id.toString()).flat();
+
+    console.log("dismissedUsers:::", dismissedUsers);
+
+    // Remove dismissed users from the newRecommendedUsers
+    const filteredRecommendedUsers = newRecommendedUsers.filter((user) => !dismissedUsers.includes(user));
+    const objectIds = filteredRecommendedUsers.map((id) => new ObjectId(id));
+    console.log("newRecommendedUsers::", newRecommendedUsers);
     const pipeline = [
       {
         $match: {
@@ -168,7 +159,6 @@ const getsuggestion = async (req, res) => {
       },
     ];
     console.log("Fetch User QUERY::", JSON.stringify(pipeline));
-    console.log("Connection QUERY::", JSON.stringify(connectionQuery));
 
     const result = await user.aggregate(pipeline);
 
@@ -183,6 +173,27 @@ const getsuggestion = async (req, res) => {
     console.error("Error fetching records by country:", error);
     return res.status(500).json({ message: "Server error.", error: error.message });
   }
+};
+
+const fetchUserConnections = async (_id, data = [{ status: "Accepted" }]) => {
+  const query = {
+    $or: [{ sender: new mongoose.Types.ObjectId(_id) }, { receiver: new mongoose.Types.ObjectId(_id) }],
+  };
+
+  // Dynamically add `status` to the query if provided in `data`
+  if (data?.length > 0) {
+    query.$or = query.$or.map((condition) => ({
+      ...condition,
+      $and: data.map((filter) => ({ status: filter.status })),
+    }));
+  }
+  console.log("Connection query::", query);
+  const connections = await connection.find(query, "_id sender receiver");
+  const connectionIds = connections.map((conn) => [conn.sender, conn.receiver]).flat();
+  const uniqueIds = [...new Set(connectionIds.map((id) => id.toString()))];
+  const filterIds = uniqueIds.filter((userId) => userId !== _id);
+  // console.log("--->..", filterIds);
+  return filterIds;
 };
 
 const getUserConnections = async (req, res) => {
@@ -204,9 +215,25 @@ const getUserConnections = async (req, res) => {
     if (filteredIds.length === 0) {
       return res.status(200).json({ users: [] });
     }
+    console.log("\n\n::id::", id);
+    const disUsersResult = await connectionStatusModel
+      .find({ $or: [{ disconnected_user: new mongoose.Types.ObjectId(id) }, { user: new mongoose.Types.ObjectId(id) }] })
+      .select("disconnected_user user");
+
+    // Extract the disconnected users and users
+    const allUsers = disUsersResult
+      .map((item) => [item.disconnected_user, item.user]) // Merge disconnected_user and user
+      .flat() // Flatten the array so it's a single list
+      .map((user) => user.toString()); // Convert ObjectIds to strings
+
+    console.log("allUsers::", allUsers);
+
+    // Filter out the users in allUsers (disconnected and actual user) from filteredIds
+    const filteredIdsWithoutDisconnected = filteredIds.filter((id) => !allUsers.includes(id));
     const users = await user.find({
-      _id: { $in: filteredIds.map((id) => new mongoose.Types.ObjectId(id)) },
+      _id: { $in: filteredIdsWithoutDisconnected.map((id) => new mongoose.Types.ObjectId(id)) },
     });
+
     return res.status(200).json({ users });
   } catch (error) {
     console.error("Error fetching connections:", error);
@@ -463,10 +490,15 @@ const updateconnectionstuats = async (req, res) => {
 };
 
 const globalSearchConnections = async (req, res) => {
-  const { query } = req.body;
+  const { query, _id } = req.body;
 
   if (!query) {
     return res.status(400).json({ message: "Search query is required." });
+  }
+
+  const userConns = await fetchUserConnections(_id);
+  if (!userConns || userConns.length === 0) {
+    return res.status(400).json({ message: "No user connections found." });
   }
 
   try {
@@ -475,17 +507,23 @@ const globalSearchConnections = async (req, res) => {
     const fullNameRegex = new RegExp(`^${terms.join(" ")}$`, "i"); // Regex for exact full-name match
 
     // Perform a full-name match first
-    const fullNameMatches = await user
-      .find({
-        $expr: { $regexMatch: { input: { $concat: ["$firstname", " ", "$lastname"] }, regex: fullNameRegex } },
-      })
-      .select("firstname lastname designation profileImage");
-
+    const fullNameMatches = await user.find({
+      $expr: {
+        $regexMatch: {
+          input: { $concat: ["$firstname", " ", "$lastname"] },
+          regex: fullNameRegex,
+        },
+      },
+      _id: { $in: userConns.map((id) => new mongoose.Types.ObjectId(id)) },
+    });
+    // .select("firstname lastname designation profileImage _id");
+    console.log(fullNameMatches);
     if (fullNameMatches.length > 0) {
       const response = fullNameMatches.map((user) => ({
         name: `${user.firstname} ${user.lastname}`,
         designation: user.designation,
         profileImage: user.profileImage,
+        _id: user._id,
       }));
 
       return res.status(200).json({
@@ -501,13 +539,15 @@ const globalSearchConnections = async (req, res) => {
           { firstname: { $in: regexArray } }, // Partial matches for firstname
           { lastname: { $in: regexArray } }, // Partial matches for lastname
         ],
+        _id: { $in: userConns.map((id) => new mongoose.Types.ObjectId(id)) },
       })
-      .select("firstname lastname designation profileImage");
+      .select("firstname lastname designation profileImage _id");
 
     const response = partialMatches.map((user) => ({
       name: `${user.firstname} ${user.lastname}`,
       designation: user.designation,
       profileImage: user.profileImage,
+      _id: user._id,
     }));
 
     if (response.length === 0) {
@@ -531,7 +571,7 @@ const globalSearch = async (req, res) => {
   const query = req.query.q; // Get the search query from the URL
   let page = parseInt(req.query.page) || 1; // Default to page 1 if not provided
   let limit = parseInt(req.query.limit) || 10;
-  const _id = req.query._id; // Current user ID
+  const { _id } = req.query._id; // Current user ID
 
   if (!mongoose.Types.ObjectId.isValid(_id)) {
     return res.status(400).json({ message: "Invalid UserId (_id) provided." });
@@ -740,6 +780,142 @@ const fetchConversations = async (req, res) => {
   }
 };
 
+const reportUser = async (req, res) => {
+  try {
+    const { reportedBy, reportedPerson, comment } = req.body;
+    if (!reportedBy || !reportedPerson || !comment) {
+      return res.status(400).json({ message: "reportedPerson, reportedBy and comment are required" });
+    }
+
+    if (!reportedBy) {
+      return res.status(400).json({ message: "reportedBy is required" });
+    }
+
+    if (!reportedPerson) {
+      return res.status(400).json({ message: "reportedPerson is required" });
+    }
+
+    if (reportedPerson == reportedBy) {
+      return res.status(400).json({ message: "Dude come on" });
+    }
+
+    if (!comment) {
+      return res.status(400).json({ message: "comment is required" });
+    }
+
+    const reportedPersonIdExists = await user.findById(reportedPerson); // Fetch the user by their unique ID
+    if (!reportedPersonIdExists) {
+      return res.status(404).json({ message: "reportedPersonId not found." }); // Return a 404 error if the user does not exist
+    }
+
+    const reportedByIdExists = await user.findById(reportedBy); // Fetch the user by their unique ID
+    if (!reportedByIdExists) {
+      return res.status(404).json({ message: "reportedById not found." }); // Return a 404 error if the user does not exist
+    }
+
+    const reportInfo = new UserReportModel({
+      reportedBy,
+      reportedPerson,
+      comment,
+    });
+
+    await reportInfo.save();
+    res.status(201).json(reportInfo);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to save data." });
+  }
+};
+
+const disconnectUser = async (req, res) => {
+  try {
+    const { _id, disconnected_user } = req.body;
+    if (!_id || !disconnected_user) {
+      return res.status(400).json({ message: " disconnected_user and _id are required" });
+    }
+
+    if (!_id) {
+      return res.status(400).json({ message: "_id is required" });
+    }
+
+    if (!disconnected_user) {
+      return res.status(400).json({ message: "disconnected_user is required" });
+    }
+
+    if (_id == disconnected_user) {
+      return res.status(400).json({ message: "Dude come on" });
+    }
+
+    const IdExists = await user.findById(_id); // Fetch the user by their unique ID
+    if (!IdExists) {
+      return res.status(404).json({ message: "_id not found." }); // Return a 404 error if the user does not exist
+    }
+
+    const disconnected_userIdExists = await user.findById(disconnected_user); // Fetch the user by their unique ID
+    if (!disconnected_userIdExists) {
+      return res.status(404).json({ message: "disconnected_user not found." }); // Return a 404 error if the user does not exist
+    }
+
+    const connections = await fetchUserConnections(_id);
+    if (!connections.includes(disconnected_user)) {
+      return res.status(401).json({ success: false, message: "Users are not connected" });
+    }
+
+    const updatedStatus = await connectionStatusModel.findOneAndUpdate(
+      { user: _id, disconnected_user },
+      { $set: { timestamp: new Date() } },
+      { new: true, upsert: true }
+    );
+
+    res.status(201).json({ success: true });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to save data." });
+  }
+};
+
+const dismissSuggestion = async (req, res) => {
+  try {
+    const { _id, suggested_user_id } = req.body;
+    if (!_id || !suggested_user_id) {
+      return res.status(400).json({ message: " suggested_user_id and _id are required" });
+    }
+
+    if (!_id) {
+      return res.status(400).json({ message: "_id is required" });
+    }
+
+    if (!suggested_user_id) {
+      return res.status(400).json({ message: "suggested_user_id is required" });
+    }
+
+    if (_id == suggested_user_id) {
+      return res.status(400).json({ message: "Dude come on" });
+    }
+
+    const IdExists = await user.findById(_id); // Fetch the user by their unique ID
+    if (!IdExists) {
+      return res.status(404).json({ message: "_id not found." }); // Return a 404 error if the user does not exist
+    }
+
+    const disconnected_userIdExists = await user.findById(suggested_user_id); // Fetch the user by their unique ID
+    if (!disconnected_userIdExists) {
+      return res.status(404).json({ message: "suggested_user_id not found." }); // Return a 404 error if the user does not exist
+    }
+
+    const updatedStatus = await userSuggestionModel.findOneAndUpdate(
+      { user: _id, suggested_user_id },
+      { $set: { timestamp: new Date() } },
+      { new: true, upsert: true }
+    );
+
+    res.status(201).json({ success: true });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to save data." });
+  }
+};
+
 module.exports = {
   createuser1,
   login,
@@ -756,4 +932,7 @@ module.exports = {
   globalSearch,
   saveConversations,
   fetchConversations,
+  reportUser,
+  dismissSuggestion,
+  disconnectUser,
 };

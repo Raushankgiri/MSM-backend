@@ -33,12 +33,15 @@ const matches = (obj1, obj2) => {
 
 const fetchRecommendUsers = async (userId) => {
   const url = `${process.env.ML_AI_BKD_URL}/recommend-user/${userId}`;
-
+  let data = JSON.stringify({
+    top: process.env.TOP_N_SUGGESTION || 8,
+  });
   const config = {
     method: "post",
     maxBodyLength: Infinity,
     url: url,
-    headers: {},
+    headers: { "Content-Type": "application/json" },
+    data: data,
   };
 
   try {

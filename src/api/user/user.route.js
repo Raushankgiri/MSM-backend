@@ -16,6 +16,9 @@ const {
   globalSearch,
   saveConversations,
   fetchConversations,
+  reportUser,
+  dismissSuggestion,
+  disconnectUser,
 } = require("../user/user.controller");
 const auth = require("../../middlewares/auth");
 
@@ -38,5 +41,10 @@ router.post("/getUserConnections", getUserConnections);
 
 router.get("/fetch-conversations", fetchConversations);
 router.post("/conversations", saveConversations);
+
+router.post("/report-user", reportUser);
+
+router.post("/disconnect-user", disconnectUser);
+router.post("/dismiss-suggestion", dismissSuggestion);
 
 module.exports = router;

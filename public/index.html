@@ -29,7 +29,7 @@
 
         // Ensure both userId and otherUserId are non-empty
         if (userId && otherUserId) {
-          $.get(`http://localhost:3007/api/v1/fetch-conversations?userId=${userId}&otherUserId=${otherUserId}`, function (messages) {
+          $.get(`https://msm-backend-zi4g.onrender.com/api/v1/fetch-conversations?userId=${userId}&otherUserId=${otherUserId}`, function (messages) {
             const chatHistory = $("#chat-history");
             chatHistory.empty(); // Clear the chat history before adding new messages
             messages.conversations.forEach((message) => {
@@ -52,7 +52,7 @@
         // Ensure that userId, otherUserId, and message are provided
         if (userId && otherUserId && message) {
           $.post(
-            "http://localhost:3007/api/v1/conversations",
+            "https://msm-backend-zi4g.onrender.com/api/v1/conversations",
             {
               senderUserId: userId,
               receiverUserId: otherUserId,
