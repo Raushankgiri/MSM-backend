@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simple Chat</title>
+  </head>
+  <body>
+    <h1>Simple Chat</h1>
+
+    <!-- Input fields for userId and otherUserId -->
+    <label for="userId">Your User ID:</label>
+    <input type="text" id="userId" placeholder="Enter your user ID" /><br />
+
+    <label for="otherUserId">Other User ID:</label>
+    <input type="text" id="otherUserId" placeholder="Enter other user ID" /><br />
+
+    <div id="chat-history"></div>
+
+    <input type="text" id="message-input" placeholder="Type your message" />
+    <button onclick="sendMessage()">Send</button>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+      // Function to fetch conversations using user input IDs as query params
+      function fetchConversations() {
+        const userId = $("#userId").val();
+        const otherUserId = $("#otherUserId").val();
+
+        // Ensure both userId and otherUserId are non-empty
+        if (userId && otherUserId) {
+          $.get(`http://localhost:3007/api/v1/fetch-conversations?userId=${userId}&otherUserId=${otherUserId}`, function (messages) {
+            const chatHistory = $("#chat-history");
+            chatHistory.empty(); // Clear the chat history before adding new messages
+            messages.conversations.forEach((message) => {
+              chatHistory.append(`<div><strong>${message.senderUserId}:</strong> ${message.message}</div>`);
+            });
+          }).fail(function () {
+            alert("Error fetching conversations. Please try again.");
+          });
+        } else {
+          console.log("Please enter both user IDs.");
+        }
+      }
+
+      // Function to send new message using query params
+      function sendMessage() {
+        const userId = $("#userId").val();
+        const otherUserId = $("#otherUserId").val();
+        const message = $("#message-input").val();
+
+        // Ensure that userId, otherUserId, and message are provided
+        if (userId && otherUserId && message) {
+          $.post(
+            "http://localhost:3007/api/v1/conversations",
+            {
+              senderUserId: userId,
+              receiverUserId: otherUserId,
+              message: message,
+            },
+            function (newMessage) {
+              $("#chat-history").append(`<div><strong>${newMessage.senderUserId}:</strong> ${newMessage.message}</div>`);
+              $("#message-input").val(""); // Clear input field
+            }
+          ).fail(function () {
+            alert("Error sending message. Please try again.");
+          });
+        } else {
+          alert("Please enter both user IDs and a message.");
+        }
+      }
+
+      // Fetch conversations when both userIds are provided
+      $(document).ready(function () {
+        // Call fetchConversations when both userIds are provided
+        $("#userId, #otherUserId").on("input", function () {
+          const userId = $("#userId").val();
+          const otherUserId = $("#otherUserId").val();
+
+          // Only fetch conversations if both userIds are entered
+          if (userId && otherUserId) {
+            fetchConversations();
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

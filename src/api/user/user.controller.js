@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const { ObjectId } = require("mongodb");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const ConversationModel = require("../../model/conversation.model");
 
 require("dotenv").config();
 
@@ -469,22 +470,41 @@ const globalSearchConnections = async (req, res) => {
   }
 
   try {
-    // Split the query into individual words and create regex patterns
-    const terms = query.trim().split(/\s+/); // Split by spaces
-    const regexArray = terms.map((term) => new RegExp(term, "i")); // Case-insensitive regex for each term
+    const terms = query.trim().split(/\s+/); // Split query into terms
+    const regexArray = terms.map((term) => new RegExp(term, "i")); // Regex for partial matches
+    const fullNameRegex = new RegExp(`^${terms.join(" ")}$`, "i"); // Regex for exact full-name match
 
-    // Search for matches in `firstname` or `lastname`
-    const users = await user
+    // Perform a full-name match first
+    const fullNameMatches = await user
+      .find({
+        $expr: { $regexMatch: { input: { $concat: ["$firstname", " ", "$lastname"] }, regex: fullNameRegex } },
+      })
+      .select("firstname lastname designation profileImage");
+
+    if (fullNameMatches.length > 0) {
+      const response = fullNameMatches.map((user) => ({
+        name: `${user.firstname} ${user.lastname}`,
+        designation: user.designation,
+        profileImage: user.profileImage,
+      }));
+
+      return res.status(200).json({
+        message: "Search results fetched successfully.",
+        data: response,
+      });
+    }
+
+    // Fallback: Partial matches for firstname and lastname
+    const partialMatches = await user
       .find({
         $or: [
-          { firstname: { $in: regexArray } }, // Match any term in firstname
-          { lastname: { $in: regexArray } }, // Match any term in lastname
+          { firstname: { $in: regexArray } }, // Partial matches for firstname
+          { lastname: { $in: regexArray } }, // Partial matches for lastname
         ],
       })
       .select("firstname lastname designation profileImage");
 
-    // Format response
-    const response = users.map((user) => ({
+    const response = partialMatches.map((user) => ({
       name: `${user.firstname} ${user.lastname}`,
       designation: user.designation,
       profileImage: user.profileImage,
@@ -619,6 +639,107 @@ const deleteconnectionrequest = async (req, res) => {
   }
 };
 
+const saveConversations = async (req, res) => {
+  const { senderUserId, receiverUserId, message } = req.body;
+
+  if (!senderUserId) {
+    return res.status(400).json({ message: "senderUserId is required" });
+  }
+
+  if (!receiverUserId) {
+    return res.status(400).json({ message: "receiverUserId is required" });
+  }
+
+  if (!message) {
+    return res.status(400).json({ message: "message is required" });
+  }
+
+  if (receiverUserId === senderUserId) {
+    return res.status(400).json({ message: "Dude come on" });
+  }
+
+  const senderUserIdExists = await user.findById(senderUserId); // Fetch the user by their unique ID
+  if (!senderUserIdExists) {
+    return res.status(404).json({ message: "senderUserId not found." }); // Return a 404 error if the user does not exist
+  }
+
+  const receiverUserIdExists = await user.findById(receiverUserId); // Fetch the user by their unique ID
+  if (!receiverUserIdExists) {
+    return res.status(404).json({ message: "User not found." }); // Return a 404 error if the user does not exist
+  }
+
+  try {
+    const newMessage = new ConversationModel({
+      senderUserId,
+      receiverUserId,
+      message,
+    });
+
+    await newMessage.save();
+    res.status(201).json(newMessage);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to save the message." });
+  }
+};
+
+const fetchConversations = async (req, res) => {
+  const { userId, otherUserId, page = 1, limit = 10 } = req.query; // Default to page 1 and limit 10
+
+  if (!userId || !otherUserId) {
+    return res.status(400).json({ message: "userId and otherUserId are required" });
+  }
+
+  if (userId === otherUserId) {
+    return res.status(400).json({ message: "Dude come on" });
+  }
+
+  console.log(userId, otherUserId);
+
+  try {
+    // Convert page and limit to integers
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+
+    // Calculate skip value based on page number and limit
+    const skip = (pageNum - 1) * limitNum;
+
+    // Query conversations with pagination
+    const conversations = await ConversationModel.find({
+      $or: [
+        { senderUserId: userId, receiverUserId: otherUserId },
+        { senderUserId: otherUserId, receiverUserId: userId },
+      ],
+    })
+      .sort({ timestamp: 1 }) // Sorted by timestamp to show in order.
+      .skip(skip) // Skip the messages for previous pages
+      .limit(limitNum); // Limit the number of messages per page
+
+    // Get the total count of conversations for pagination metadata
+    const totalConversations = await ConversationModel.countDocuments({
+      $or: [
+        { senderUserId: userId, receiverUserId: otherUserId },
+        { senderUserId: otherUserId, receiverUserId: userId },
+      ],
+    });
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalConversations / limitNum);
+
+    // Send response with conversations and pagination info
+    res.status(200).json({
+      conversations,
+      pagination: {
+        totalConversations,
+        totalPages,
+        currentPage: pageNum,
+        limit: limitNum,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch conversations." });
+  }
+};
+
 module.exports = {
   createuser1,
   login,
@@ -633,4 +754,6 @@ module.exports = {
   getUserConnections,
   deleteconnectionrequest,
   globalSearch,
+  saveConversations,
+  fetchConversations,
 };
