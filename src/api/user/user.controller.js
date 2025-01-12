@@ -750,7 +750,7 @@ const fetchConversations = async (req, res) => {
         { senderUserId: otherUserId, receiverUserId: userId },
       ],
     })
-      .sort({ timestamp: 1 }) // Sorted by timestamp to show in order.
+      .sort({ createdAt: 1 }) // Sorted by timestamp to show in order.
       .skip(skip) // Skip the messages for previous pages
       .limit(limitNum); // Limit the number of messages per page
 
