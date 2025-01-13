@@ -157,6 +157,11 @@ const getsuggestion = async (req, res) => {
           },
         },
       },
+      {
+        $project: {
+          password: 0,
+        },
+      },
     ];
     console.log("Fetch User QUERY::", JSON.stringify(pipeline));
 
@@ -187,7 +192,7 @@ const fetchUserConnections = async (_id, data = [{ status: "Accepted" }]) => {
       $and: data.map((filter) => ({ status: filter.status })),
     }));
   }
-  console.log("Connection query::", query);
+  console.log("Connection query::", JSON.stringify(query));
   const connections = await connection.find(query, "_id sender receiver");
   const connectionIds = connections.map((conn) => [conn.sender, conn.receiver]).flat();
   const uniqueIds = [...new Set(connectionIds.map((id) => id.toString()))];
@@ -496,6 +501,11 @@ const globalSearchConnections = async (req, res) => {
     return res.status(400).json({ message: "Search query is required." });
   }
 
+  if (!_id) {
+    return res.status(400).json({ message: " _id is required." });
+  }
+
+  console.log("--->>_id::", _id);
   const userConns = await fetchUserConnections(_id);
   if (!userConns || userConns.length === 0) {
     return res.status(400).json({ message: "No user connections found." });
