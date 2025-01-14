@@ -159,7 +159,10 @@ const getsuggestion = async (req, res) => {
       },
       {
         $project: {
-          password: 0,
+          firstname: 1,
+          lastname: 1,
+          designation: 1,
+          profileImage: 1,
         },
       },
     ];
